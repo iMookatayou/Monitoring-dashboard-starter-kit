@@ -2,8 +2,8 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -11,21 +11,25 @@ import (
 )
 
 type Metric struct {
-	ID         int64              `db:"id"`
-	Service    string             `db:"service"`
-	Name       string             `db:"name"`
-	Value      float64            `db:"value"`
-	LabelsRaw  []byte             `db:"labels"`
-	ObservedAt time.Time          `db:"observed_at"`
-	CreatedAt  time.Time          `db:"created_at"`
+	ID         int64     `db:"id"`
+	Service    string    `db:"service"`
+	Name       string    `db:"name"`
+	Value      float64   `db:"value"`
+	LabelsRaw  []byte    `db:"labels"`
+	ObservedAt time.Time `db:"observed_at"`
+	CreatedAt  time.Time `db:"created_at"`
 }
 
-type Repo struct { DB *sqlx.DB }
+type Repo struct{ DB *sqlx.DB }
 
 func New(dataSource string) (*Repo, error) {
 	db, err := sqlx.Connect("postgres", dataSource)
-	if err != nil { return nil, err }
-	if err := migrate(db); err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
+	if err := migrate(db); err != nil {
+		return nil, err
+	}
 	return &Repo{DB: db}, nil
 }
 
@@ -52,7 +56,9 @@ CREATE INDEX IF NOT EXISTS idx_metrics_labels_gin ON metrics USING GIN(labels);
 func (r *Repo) InsertMetric(ctx context.Context, m map[string]any) error {
 	labels := map[string]string{}
 	if v, ok := m["labels"].(map[string]any); ok {
-		for k, vv := range v { labels[k] = toString(vv) }
+		for k, vv := range v {
+			labels[k] = toString(vv)
+		}
 	}
 	labelsJSON, _ := json.Marshal(labels)
 	_, err := r.DB.ExecContext(ctx,
@@ -64,10 +70,14 @@ func (r *Repo) InsertMetric(ctx context.Context, m map[string]any) error {
 
 func toString(v any) string {
 	switch t := v.(type) {
-	case string: return t
-	case float64: return fmt.Sprintf("%g", t)
-	case int64: return fmt.Sprintf("%d", t)
-	default: return ""
+	case string:
+		return t
+	case float64:
+		return fmt.Sprintf("%g", t)
+	case int64:
+		return fmt.Sprintf("%d", t)
+	default:
+		return ""
 	}
 }
 
@@ -80,19 +90,25 @@ func (r *Repo) QueryMetrics(ctx context.Context, service, name string, from, to 
 	      ORDER BY observed_at DESC
 	      LIMIT $5`
 	rows, err := r.DB.QueryxContext(ctx, q, from, to, service, name, limit)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	var out []Metric
 	for rows.Next() {
 		var m Metric
-		if err := rows.StructScan(&m); err != nil { return nil, err }
+		if err := rows.StructScan(&m); err != nil {
+			return nil, err
+		}
 		out = append(out, m)
 	}
 	return out, rows.Err()
 }
 
 func (m *Metric) Labels() (map[string]string, error) {
-	if len(m.LabelsRaw) == 0 { return map[string]string{}, nil }
+	if len(m.LabelsRaw) == 0 {
+		return map[string]string{}, nil
+	}
 	var res map[string]string
 	return res, json.Unmarshal(m.LabelsRaw, &res)
 }

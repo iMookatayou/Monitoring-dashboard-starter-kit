@@ -6,19 +6,17 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	// >>> เพิ่ม import นี้ <<<
+	"github.com/iMookatayou/monitoring-dashboard-starter-kit/monitoring-backend/internal/repository"
 )
 
 type Repository interface {
 	InsertMetric(ctx context.Context, m map[string]any) error
-	QueryMetrics(ctx context.Context, service, name string, from, to time.Time, limit int) ([]struct {
-		ID         int64     `db:"id"`
-		Service    string    `db:"service"`
-		Name       string    `db:"name"`
-		Value      float64   `db:"value"`
-		LabelsRaw  []byte    `db:"labels"`
-		ObservedAt time.Time `db:"observed_at"`
-		CreatedAt  time.Time `db:"created_at"`
-	}, error)
+
+	// >>> แก้บรรทัดนี้ให้คืน []repository.Metric <<<
+	QueryMetrics(ctx context.Context, service, name string, from, to time.Time, limit int) ([]repository.Metric, error)
+
 	Ping(ctx context.Context) error
 }
 
