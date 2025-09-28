@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: ${DB_NAME:-metrics}
     ports:
-      - "5433:5432" # host:container
+      - "5433:5432"
     volumes:
       - dbdata:/var/lib/postgresql/data
     healthcheck:

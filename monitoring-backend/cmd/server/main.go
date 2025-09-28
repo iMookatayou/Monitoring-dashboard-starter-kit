@@ -14,19 +14,46 @@ import (
 
 func main() {
 	cfg := config.Load()
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPass, cfg.DBName, cfg.DBSSL)
+	dsn := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPass, cfg.DBName, cfg.DBSSL,
+	)
 	repo, err := repository.New(dsn)
 	if err != nil {
 		log.Fatalf("db connect/migrate: %v", err)
 	}
 
-	h := handlers.Handler{Repo: repo}
-	r := server.NewRouter(server.Deps{Handler: h, ApiKey: cfg.ApiKey})
+	h := handlers.HTTP{Repo: repo}
+	mux := server.NewMux(server.Deps{Handler: h, APIKey: cfg.ApiKey})
 
-	srv := &http.Server{Addr: ":" + cfg.AppPort, Handler: r, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second}
-	log.Printf("listening on :%s", cfg.AppPort)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal(err)
+	srv := &http.Server{
+		Addr:         ":" + cfg.AppPort,
+		Handler:      middlewareChain(mux), // logging + recover
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 15 * time.Second,
 	}
+	log.Printf("listening on :%s", cfg.AppPort)
+	log.Fatal(srv.ListenAndServe())
+}
+
+// --- minimal global middlewares ---
+func middlewareChain(h http.Handler) http.Handler {
+	return middlewareRecover(middlewareLogging(h))
+}
+func middlewareLogging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
+	})
+}
+func middlewareRecover(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
