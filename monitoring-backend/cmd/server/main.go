@@ -18,6 +18,7 @@ func main() {
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPass, cfg.DBName, cfg.DBSSL,
 	)
+
 	repo, err := repository.New(dsn)
 	if err != nil {
 		log.Fatalf("db connect/migrate: %v", err)
@@ -28,18 +29,39 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.AppPort,
-		Handler:      middlewareChain(mux), // logging + recover
+		Handler:      middlewareChain(mux), // CORS + logging + recover
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 15 * time.Second,
 	}
+
 	log.Printf("listening on :%s", cfg.AppPort)
 	log.Fatal(srv.ListenAndServe())
 }
 
-// --- minimal global middlewares ---
-func middlewareChain(h http.Handler) http.Handler {
-	return middlewareRecover(middlewareLogging(h))
+// ---- global middlewares ----
+
+// CORS ต้องอยู่นอกสุด เพื่อให้ preflight OPTIONS ผ่านได้ก่อน middleware อื่น
+func middlewareCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
+
+func middlewareChain(h http.Handler) http.Handler {
+	return middlewareCORS(
+		middlewareRecover(
+			middlewareLogging(h),
+		),
+	)
+}
+
 func middlewareLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -47,6 +69,7 @@ func middlewareLogging(next http.Handler) http.Handler {
 		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
 	})
 }
+
 func middlewareRecover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
